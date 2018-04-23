@@ -107,6 +107,46 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     }
     
     @IBAction func queryRecord(_ sender: Any) {
+        if let text = addressField.text {
+            
+            // create the search predicate
+            let predicate = NSPredicate(format: "address = %@", text)
+            
+            // create the query for the record type "houses"
+            let query = CKQuery(recordType: "Houses", predicate: predicate)
+            
+            // perform the query with completion handler
+            privateDatabase?.perform(query, inZoneWith: recordZone?.zoneID, completionHandler: ({results, error in
+                if let err = error {
+                    DispatchQueue.main.async {
+                        // notify user of error
+                        self.notifyUser("Cloud Access Error", message: err.localizedDescription)
+                    }
+                } else {
+                    // if the results has one of more records then a match was found.
+                    if let resultsArray = results, resultsArray.count > 0 {
+                        let record = resultsArray[0]
+                        self.currentRecord = record
+                        DispatchQueue.main.async() {
+                            self.commentsField.text = record.object(forKey: "comment") as! String
+                            let photo = record.object(forKey: "photo") as! CKAsset
+                            let image = UIImage(contentsOfFile: photo.fileURL.path)
+                            
+                            if let img = image {
+                                self.imageView.image = img
+                                self.photoURL = self.saveImageToFile(img)
+                            }
+                            
+                        }
+                    } else {
+                        DispatchQueue.main.async() {
+                            // notify user no matches found
+                            self.notifyUser("Not Match Found", message: "No record matching the address was found!")
+                        }
+                    }
+                }
+            }))
+        }
     }
    
     @IBAction func selectPhoto(_ sender: Any) {
@@ -120,9 +160,49 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     }
     
     @IBAction func updateRecord(_ sender: Any) {
+        
+        // if a record has been selected
+        if let record = currentRecord, let url = photoURL {
+            let asset = CKAsset(fileURL: url)
+
+            // update the record entires
+            record.setObject(addressField.text as CKRecordValue?, forKey: "address")
+            record.setObject(commentsField.text as CKRecordValue?, forKey: "comment")
+            record.setObject(asset, forKey: "photo")
+            
+            // save updated rdecord
+            privateDatabase?.save(record, completionHandler: ({returnRecord, error in
+                if let err = error {
+                    DispatchQueue.main.async() {
+                        self.notifyUser("Update Error", message: err.localizedDescription)
+                    }
+                } else {
+                    DispatchQueue.main.async() {
+                        self.notifyUser("Success", message: "Record update successfully")
+                    }
+                }
+            }))
+        } else {
+            notifyUser("No Record Selected", message: "Use Query to elect a record to update")
+        }
     }
     
     @IBAction func deleteRecord(_ sender: Any) {
+        if let record = currentRecord {
+            privateDatabase?.delete(withRecordID: record.recordID, completionHandler: ({returnRecord, error in
+                if let err = error {
+                    DispatchQueue.main.async() {
+                        self.notifyUser("Delete Error", message: err.localizedDescription)
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.notifyUser("Success", message: "Record deleted successfully!")
+                    }
+                }
+            }))
+        } else {
+            notifyUser("No Record Selected", message: "Use Quest to select a recodr to delgte.")
+        }
     }
     
     // hide the keyboard
